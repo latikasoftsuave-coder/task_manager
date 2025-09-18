@@ -38,18 +38,3 @@ class Task(models.Model):
 
     def __str__(self):
         return self.title
-
-
-class ActivityLog(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='activity_logs')
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    action = models.CharField(max_length=50)  # created, updated, deleted, etc.
-    details = models.JSONField(null=True, blank=True)
-    timestamp = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['-timestamp']
-
-    def __str__(self):
-        return f"{self.action} - {self.task.title}"

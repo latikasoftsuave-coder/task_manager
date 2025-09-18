@@ -9,4 +9,5 @@ urlpatterns = [
     path('api/tasks/', include('tasks.urls')),
     path('api/categories/', include('categories.urls')),
     path('api/tags/', include('tags.urls')),
+    path('api/', include('activity.urls')),
 ]

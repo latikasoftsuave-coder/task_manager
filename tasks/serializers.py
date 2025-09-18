@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Task, ActivityLog
+from activity.models import Task, ActivityLog
 from categories.serializers import CategorySerializer
 from tags.serializers import TagSerializer
 

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Task, ActivityLog
+from activity.models import Task, ActivityLog
 
 @admin.register(Task)
 class TaskAdmin(admin.ModelAdmin):

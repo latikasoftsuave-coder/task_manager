@@ -1,16 +1,20 @@
 from rest_framework import generics, status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
+from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
-
-from .models import Task, ActivityLog
+from .models import Task
+from activity.models import ActivityLog
 from .serializers import TaskSerializer, ActivityLogSerializer
 from categories.models import Category
 from tags.models import Tag
 
+
 class TaskListCreateView(generics.ListCreateAPIView):
     serializer_class = TaskSerializer
+    lookup_field = 'id'
 
     def get_queryset(self):
         queryset = Task.objects.filter(user=self.request.user)
@@ -38,7 +42,9 @@ class TaskListCreateView(generics.ListCreateAPIView):
         return queryset
 
     def perform_create(self, serializer):
-        task = serializer.save()
+        # Save task with logged-in user
+        task = serializer.save(user=self.request.user)
+
         # Log activity
         ActivityLog.objects.create(
             task=task,
@@ -47,6 +53,7 @@ class TaskListCreateView(generics.ListCreateAPIView):
             details={'title': task.title}
         )
 
+
 class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TaskSerializer
     lookup_field = 'id'
@@ -54,12 +61,23 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         return Task.objects.filter(user=self.request.user)
 
+    def retrieve(self, request, *args, **kwargs):
+        response = super().retrieve(request, *args, **kwargs)
+
+        task = self.get_object()
+        ActivityLog.objects.create(
+            task=task,
+            user=request.user,
+            action='retrieved'
+        )
+
+        return response
+
     def update(self, request, *args, **kwargs):
-        # enforce difference between PUT and PATCH
         if request.method == 'PUT':
-            kwargs['partial'] = False   # full update required
+            kwargs['partial'] = False   # full update
         elif request.method == 'PATCH':
-            kwargs['partial'] = True    # partial update allowed
+            kwargs['partial'] = True    # partial update
 
         response = super().update(request, *args, **kwargs)
 
@@ -74,14 +92,6 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
 
         return response
 
-    def perform_destroy(self, instance):
-        # log delete activity
-        ActivityLog.objects.create(
-            task=instance,
-            user=self.request.user,
-            action='deleted'
-        )
-        instance.delete()
 
 @api_view(['POST'])
 def add_category_to_task(request, task_id):
@@ -108,6 +118,7 @@ def add_category_to_task(request, task_id):
     except Task.DoesNotExist:
         return Response({'error': 'Task not found'}, status=404)
 
+
 @api_view(['POST'])
 def add_tag_to_task(request, task_id):
     try:
@@ -131,15 +142,17 @@ def add_tag_to_task(request, task_id):
     except Task.DoesNotExist:
         return Response({'error': 'Task not found'}, status=404)
 
+
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def task_logs(request, task_id):
-    try:
-        task = Task.objects.get(id=task_id, user=request.user)
-        logs = ActivityLog.objects.filter(task=task)
-        serializer = ActivityLogSerializer(logs, many=True)
-        return Response(serializer.data)
-    except Task.DoesNotExist:
-        return Response({'error': 'Task not found'}, status=404)
+    logs = ActivityLog.objects.filter(task_id=task_id, user=request.user).order_by('-timestamp')
+    if not logs.exists():
+        return Response({'error': 'No logs found for this task'}, status=404)
+
+    serializer = ActivityLogSerializer(logs, many=True)
+    return Response(serializer.data)
+
 
 @api_view(['POST'])
 def set_reminder(request, task_id):
@@ -156,6 +169,7 @@ def set_reminder(request, task_id):
         })
     except Task.DoesNotExist:
         return Response({'error': 'Task not found'}, status=404)
+
 
 @api_view(['GET'])
 def get_reminders(request):

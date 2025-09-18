@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'tasks',
     'categories',
     'tags',
+    'activity',
 ]
 
 # Middleware
