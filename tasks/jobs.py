@@ -12,6 +12,7 @@ def send_due_reminders():
     print(f"[Scheduler] Checked at {now}, found {due_tasks.count()} tasks")
 
     for task in due_tasks:
+        # Send reminder mail
         send_mail(
             subject=f"Reminder: {task.title}",
             message=f"Your task '{task.title}' is due now.",
@@ -19,9 +20,10 @@ def send_due_reminders():
             recipient_list=[task.user.email],
             fail_silently=False,
         )
-        task.remind_at = None
-        task.save()
-        print(f"[Scheduler] Sent reminder for task {task.title}")
+
+        # ✅ Delete task after sending reminder
+        print(f"[Scheduler] Sent reminder and deleting task: {task.title}")
+        task.delete()
 
 def start_scheduler():
     scheduler = BackgroundScheduler(timezone="Asia/Kolkata")

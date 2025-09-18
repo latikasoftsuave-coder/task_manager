@@ -2,7 +2,8 @@ from rest_framework import serializers
 from activity.models import Task, ActivityLog
 from categories.serializers import CategorySerializer
 from tags.serializers import TagSerializer
-
+from categories.models import Category
+from tags.models import Tag
 
 class TaskSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
@@ -14,8 +15,8 @@ class TaskSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Task
-        fields = '__all__'
-        read_only_fields = ('user', 'created_at', 'updated_at')
+        exclude = ('category', 'tags', 'user', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'user', 'created_at', 'updated_at')
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
@@ -48,3 +49,23 @@ class ActivityLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = ActivityLog
         fields = '__all__'
+
+class TaskCategorySerializer(serializers.Serializer):
+    category_id = serializers.UUIDField()
+
+    def validate_category_id(self, value):
+        if not Category.objects.filter(id=value).exists():
+            raise serializers.ValidationError("Category not found.")
+        return value
+
+
+class TaskTagSerializer(serializers.Serializer):
+    tags = serializers.ListField(
+        child=serializers.UUIDField(), allow_empty=False
+    )
+
+    def validate_tags(self, value):
+        missing = [tag_id for tag_id in value if not Tag.objects.filter(id=tag_id).exists()]
+        if missing:
+            raise serializers.ValidationError(f"Tags not found: {missing}")
+        return value
