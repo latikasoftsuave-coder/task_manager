@@ -27,10 +27,10 @@ INSTALLED_APPS = [
 
     # Your apps
     'users',
-    'tasks',
     'categories',
     'tags',
     'activity',
+    'tasks.apps.TasksConfig',
 ]
 
 # Middleware
@@ -111,7 +111,7 @@ CORS_ALLOWED_ORIGINS = config(
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Kolkata'
 USE_I18N = True
 USE_TZ = True
 

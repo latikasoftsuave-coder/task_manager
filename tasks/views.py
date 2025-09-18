@@ -172,22 +172,22 @@ def set_reminder(request, task_id):
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_reminders(request):
     now = timezone.now()
-    next_24h = now + timezone.timedelta(hours=24)
-
     tasks = Task.objects.filter(
         user=request.user,
         remind_at__isnull=False,
-        remind_at__gte=now,
-        remind_at__lte=next_24h
+        remind_at__lte=now  # only show reminders that are due or overdue
     )
 
-    reminders = []
-    for task in tasks:
-        reminders.append({
+    reminders = [
+        {
             'task_id': str(task.id),
+            'title': task.title,
             'remind_at': task.remind_at
-        })
+        }
+        for task in tasks
+    ]
 
     return Response(reminders)
