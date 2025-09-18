@@ -19,33 +19,47 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
 
+# ---------- LIST + CREATE WITH FILTERING ----------
 class TaskListCreateView(generics.ListCreateAPIView):
     serializer_class = TaskSerializer
     lookup_field = "id"
     permission_classes = [IsAuthenticated]
 
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter("priority", openapi.IN_QUERY, description="Filter by priority", type=openapi.TYPE_STRING),
+            openapi.Parameter("status", openapi.IN_QUERY, description="Filter by status", type=openapi.TYPE_STRING),
+            openapi.Parameter("due_before", openapi.IN_QUERY, description="Due before (YYYY-MM-DD)", type=openapi.TYPE_STRING),
+            openapi.Parameter("due_after", openapi.IN_QUERY, description="Due after (YYYY-MM-DD)", type=openapi.TYPE_STRING),
+            openapi.Parameter("order_by", openapi.IN_QUERY, description="Sort by field", type=openapi.TYPE_STRING),
+            openapi.Parameter("search", openapi.IN_QUERY, description="Search title/description", type=openapi.TYPE_STRING),
+        ]
+    )
     def get_queryset(self):
         queryset = Task.objects.filter(user=self.request.user)
 
         # Filtering
-        status_filter = self.request.query_params.get("status")
         priority = self.request.query_params.get("priority")
-        category_id = self.request.query_params.get("category_id")
-        tag_id = self.request.query_params.get("tag_id")
+        status_filter = self.request.query_params.get("status")
+        due_before = self.request.query_params.get("due_before")
+        due_after = self.request.query_params.get("due_after")
         search = self.request.query_params.get("search")
 
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
         if priority:
             queryset = queryset.filter(priority=priority)
-        if category_id:
-            queryset = queryset.filter(category_id=category_id)
-        if tag_id:
-            queryset = queryset.filter(tags=tag_id)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        if due_before:
+            queryset = queryset.filter(due_date__lte=due_before)
+        if due_after:
+            queryset = queryset.filter(due_date__gte=due_after)
         if search:
-            queryset = queryset.filter(
-                Q(title__icontains=search) | Q(description__icontains=search)
-            )
+            queryset = queryset.filter(Q(title__icontains=search) | Q(description__icontains=search))
+
+        # Sorting
+        order_by = self.request.query_params.get("order_by")
+        if order_by in ["priority", "due_date", "created_at", "-priority", "-due_date", "-created_at"]:
+            queryset = queryset.order_by(order_by)
 
         return queryset
 
@@ -59,6 +73,7 @@ class TaskListCreateView(generics.ListCreateAPIView):
         )
 
 
+# ---------- DETAIL (Retrieve, Update, Delete) ----------
 class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TaskSerializer
     lookup_field = "id"
@@ -166,6 +181,7 @@ def task_logs(request, task_id):
     return Response(serializer.data)
 
 
+# ---------- REMINDERS ----------
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_reminders(request):
@@ -176,47 +192,3 @@ def get_reminders(request):
         for task in tasks
     ]
     return Response(reminders)
-
-
-# ---------- FILTER ----------
-@swagger_auto_schema(
-    method="get",
-    manual_parameters=[
-        openapi.Parameter("priority", openapi.IN_QUERY, description="Filter by priority", type=openapi.TYPE_STRING),
-        openapi.Parameter("status", openapi.IN_QUERY, description="Filter by status", type=openapi.TYPE_STRING),
-        openapi.Parameter("due_before", openapi.IN_QUERY, description="Due before (YYYY-MM-DD)", type=openapi.TYPE_STRING),
-        openapi.Parameter("due_after", openapi.IN_QUERY, description="Due after (YYYY-MM-DD)", type=openapi.TYPE_STRING),
-        openapi.Parameter("order_by", openapi.IN_QUERY, description="Sort by field", type=openapi.TYPE_STRING),
-        openapi.Parameter("q", openapi.IN_QUERY, description="Search title/description", type=openapi.TYPE_STRING),
-    ],
-    responses={200: TaskSerializer(many=True)},
-)
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def filter_tasks(request):
-    user = request.user
-    queryset = Task.objects.filter(user=user)
-
-    priority = request.query_params.get("priority")
-    status = request.query_params.get("status")
-    due_before = request.query_params.get("due_before")
-    due_after = request.query_params.get("due_after")
-    search_query = request.query_params.get("q")
-
-    if priority:
-        queryset = queryset.filter(priority=priority)
-    if status:
-        queryset = queryset.filter(status=status)
-    if due_before:
-        queryset = queryset.filter(due_date__lte=due_before)
-    if due_after:
-        queryset = queryset.filter(due_date__gte=due_after)
-    if search_query:
-        queryset = queryset.filter(Q(title__icontains=search_query) | Q(description__icontains=search_query))
-
-    order_by = request.query_params.get("order_by")
-    if order_by in ["priority", "due_date", "created_at", "-priority", "-due_date", "-created_at"]:
-        queryset = queryset.order_by(order_by)
-
-    serializer = TaskSerializer(queryset, many=True)
-    return Response(serializer.data)

@@ -8,5 +8,4 @@ urlpatterns = [
     path('<uuid:task_id>/add-tag/', views.add_tag_to_task, name='add-tag'),
     path('<uuid:task_id>/logs/', views.task_logs, name='task-logs'),
     path('reminders/', views.get_reminders, name='get-reminders'),
-    path('filter/', views.filter_tasks, name='filter-tasks'),
 ]
