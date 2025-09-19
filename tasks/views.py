@@ -186,7 +186,7 @@ def task_logs(request, task_id):
 @permission_classes([IsAuthenticated])
 def get_reminders(request):
     now = timezone.now()
-    tasks = Task.objects.filter(user=request.user, remind_at__isnull=False, remind_at__lte=now)
+    tasks = Task.objects.filter(user=request.user, remind_at__isnull=False, remind_at__gte=now)
     reminders = [
         {"task_id": str(task.id), "title": task.title, "remind_at": task.remind_at}
         for task in tasks

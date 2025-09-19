@@ -5,7 +5,6 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
 from drf_yasg.utils import swagger_auto_schema
-
 from .serializers import UserRegistrationSerializer, UserSerializer
 
 User = get_user_model()
