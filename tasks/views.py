@@ -1,67 +1,83 @@
-from rest_framework import generics, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework import viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Q
 from rest_framework.permissions import IsAuthenticated
-from django.utils import timezone
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
-from .models import Task
-from activity.models import ActivityLog
-from .serializers import (
-    TaskSerializer,
-    ActivityLogSerializer,
-    TaskCategorySerializer,
-    TaskTagSerializer,
-)
-from categories.models import Category
-from tags.models import Tag
+from django.utils import timezone
+from django_filters.rest_framework import DjangoFilterBackend, FilterSet, CharFilter, DateFilter, ChoiceFilter
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
+from .models import Task
+from .serializers import TaskSerializer, ActivityLogSerializer, TaskCategorySerializer, TaskTagSerializer
+from activity.models import ActivityLog
+from categories.models import Category
+from tags.models import Tag
 
-# ---------- LIST + CREATE WITH FILTERING ----------
-class TaskListCreateView(generics.ListCreateAPIView):
+
+class TaskFilter(FilterSet):
+    """
+    Explicit/structured filters for tasks list endpoint.
+    - priority, status: Choice filters using Task model choices
+    - category: match by category name (case-insensitive)
+    - tags: comma-separated tag names -> tasks that have any of these tags
+    - due_before, due_after: date filters against due_date
+    """
+    priority = ChoiceFilter(field_name="priority", choices=Task.PRIORITY_CHOICES, lookup_expr='iexact')
+    status = ChoiceFilter(field_name="status", choices=Task.STATUS_CHOICES, lookup_expr='iexact')
+    category = CharFilter(field_name="category__name", lookup_expr="iexact")
+    tags = CharFilter(method='filter_tags')  # comma-separated names
+    due_before = DateFilter(field_name="due_date", lookup_expr="lte")
+    due_after = DateFilter(field_name="due_date", lookup_expr="gte")
+
+    class Meta:
+        model = Task
+        fields = ["priority", "status", "category", "tags", "due_before", "due_after"]
+
+    def filter_tags(self, queryset, name, value):
+        # allow comma-separated tag names: ?tags=Urgent,Important
+        names = [t.strip() for t in value.split(",") if t.strip()]
+        if not names:
+            return queryset
+        return queryset.filter(tags__name__in=names).distinct()
+
+
+# Manual swagger parameters for list (so they appear in Swagger UI)
+SWAGGER_TASK_LIST_PARAMS = [
+    openapi.Parameter("priority", openapi.IN_QUERY, description="Filter by priority (High|Medium|Low)", type=openapi.TYPE_STRING),
+    openapi.Parameter("status", openapi.IN_QUERY, description="Filter by status (Incomplete|Completed)", type=openapi.TYPE_STRING),
+    openapi.Parameter("category", openapi.IN_QUERY, description="Filter by category name (case-insensitive)", type=openapi.TYPE_STRING),
+    openapi.Parameter("tags", openapi.IN_QUERY, description="Filter by tag names (comma-separated)", type=openapi.TYPE_STRING),
+    openapi.Parameter("due_before", openapi.IN_QUERY, description="Tasks due on or before date (YYYY-MM-DD)", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE),
+    openapi.Parameter("due_after", openapi.IN_QUERY, description="Tasks due on or after date (YYYY-MM-DD)", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE),
+]
+
+
+class TaskViewSet(viewsets.ModelViewSet):
+    """
+    ModelViewSet for Task:
+    - List (GET /tasks/) supports explicit filters: priority, status, category, tags, due_before, due_after
+    - Create / Retrieve / Update / Delete operations
+    - Extra actions: add-category, add-tag, logs, reminders
+    """
     serializer_class = TaskSerializer
-    lookup_field = "id"
     permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = TaskFilter
 
-    @swagger_auto_schema(
-        manual_parameters=[
-            openapi.Parameter("priority", openapi.IN_QUERY, description="Filter by priority", type=openapi.TYPE_STRING),
-            openapi.Parameter("status", openapi.IN_QUERY, description="Filter by status", type=openapi.TYPE_STRING),
-            openapi.Parameter("due_before", openapi.IN_QUERY, description="Due before (YYYY-MM-DD)", type=openapi.TYPE_STRING),
-            openapi.Parameter("due_after", openapi.IN_QUERY, description="Due after (YYYY-MM-DD)", type=openapi.TYPE_STRING),
-            openapi.Parameter("order_by", openapi.IN_QUERY, description="Sort by field", type=openapi.TYPE_STRING),
-            openapi.Parameter("search", openapi.IN_QUERY, description="Search title/description", type=openapi.TYPE_STRING),
-        ]
-    )
+    # Don't set a global queryset attribute because get_queryset customizes it per-user.
     def get_queryset(self):
-        queryset = Task.objects.filter(user=self.request.user)
+        # When drf-yasg generates the schema it calls view methods without a real request.
+        # Avoid evaluating `self.request.user` in that case.
+        if getattr(self, "swagger_fake_view", False):
+            return Task.objects.none()
+        return Task.objects.filter(user=self.request.user).distinct()
 
-        # Filtering
-        priority = self.request.query_params.get("priority")
-        status_filter = self.request.query_params.get("status")
-        due_before = self.request.query_params.get("due_before")
-        due_after = self.request.query_params.get("due_after")
-        search = self.request.query_params.get("search")
-
-        if priority:
-            queryset = queryset.filter(priority=priority)
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-        if due_before:
-            queryset = queryset.filter(due_date__lte=due_before)
-        if due_after:
-            queryset = queryset.filter(due_date__gte=due_after)
-        if search:
-            queryset = queryset.filter(Q(title__icontains=search) | Q(description__icontains=search))
-
-        # Sorting
-        order_by = self.request.query_params.get("order_by")
-        if order_by in ["priority", "due_date", "created_at", "-priority", "-due_date", "-created_at"]:
-            queryset = queryset.order_by(order_by)
-
-        return queryset
+    @swagger_auto_schema(manual_parameters=SWAGGER_TASK_LIST_PARAMS)
+    def list(self, request, *args, **kwargs):
+        """List tasks (supports explicit filtering via query params)."""
+        return super().list(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         task = serializer.save(user=self.request.user)
@@ -72,15 +88,14 @@ class TaskListCreateView(generics.ListCreateAPIView):
             details={"title": task.title},
         )
 
-
-# ---------- DETAIL (Retrieve, Update, Delete) ----------
-class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
-    serializer_class = TaskSerializer
-    lookup_field = "id"
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        return Task.objects.filter(user=self.request.user)
+    def perform_update(self, serializer):
+        task = serializer.save()
+        ActivityLog.objects.create(
+            task=task,
+            user=self.request.user,
+            action="updated",
+            details={"updated_fields": self.request.data},
+        )
 
     def retrieve(self, request, *args, **kwargs):
         response = super().retrieve(request, *args, **kwargs)
@@ -88,107 +103,44 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
         ActivityLog.objects.create(task=task, user=request.user, action="retrieved")
         return response
 
-    def update(self, request, *args, **kwargs):
-        if request.method == "PUT":
-            kwargs["partial"] = False
-        elif request.method == "PATCH":
-            kwargs["partial"] = True
-
-        response = super().update(request, *args, **kwargs)
+    # -------- CATEGORY --------
+    @swagger_auto_schema(request_body=TaskCategorySerializer)
+    @action(detail=True, methods=["post"], url_path="add-category")
+    def add_category(self, request, pk=None):
         task = self.get_object()
-        ActivityLog.objects.create(
-            task=task,
-            user=self.request.user,
-            action="updated",
-            details={"updated_fields": request.data},
-        )
-        return response
+        serializer = TaskCategorySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        category = get_object_or_404(Category, id=serializer.validated_data["category_id"])
+        task.category = category
+        task.save()
+        ActivityLog.objects.create(task=task, user=request.user, action="category_added", details={"category": category.name})
+        return Response({"task_id": str(task.id), "category_id": str(category.id), "category_name": category.name})
 
+    # -------- TAGS --------
+    @swagger_auto_schema(request_body=TaskTagSerializer)
+    @action(detail=True, methods=["post"], url_path="add-tag")
+    def add_tag(self, request, pk=None):
+        task = self.get_object()
+        serializer = TaskTagSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        tags = Tag.objects.filter(id__in=serializer.validated_data["tags"])
+        task.tags.set(tags)
+        task.save()
+        ActivityLog.objects.create(task=task, user=request.user, action="tag_added", details={"tags": [tag.name for tag in tags]})
+        return Response({"task_id": str(task.id), "tags": [{"id": str(tag.id), "name": tag.name} for tag in tags]})
 
-# ---------- CATEGORY ----------
-@swagger_auto_schema(
-    method="post",
-    request_body=TaskCategorySerializer,
-    responses={200: "Category added successfully"},
-)
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def add_category_to_task(request, task_id):
-    task = get_object_or_404(Task, id=task_id, user=request.user)
-    serializer = TaskCategorySerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
+    # -------- LOGS --------
+    @action(detail=True, methods=["get"], url_path="logs")
+    def logs(self, request, pk=None):
+        task = self.get_object()
+        logs = ActivityLog.objects.filter(task=task, user=request.user).order_by("-timestamp")
+        serializer = ActivityLogSerializer(logs, many=True)
+        return Response(serializer.data)
 
-    category_id = serializer.validated_data["category_id"]
-    category = get_object_or_404(Category, id=category_id)
-
-    task.category = category
-    task.save()
-
-    ActivityLog.objects.create(
-        task=task, user=request.user, action="category_added", details={"category": category.name}
-    )
-
-    return Response(
-        {
-            "task_id": str(task.id),
-            "category_id": str(category.id),
-            "category_name": category.name,
-        }
-    )
-
-
-# ---------- TAGS ----------
-@swagger_auto_schema(
-    method="post",
-    request_body=TaskTagSerializer,
-    responses={200: "Tags added successfully"},
-)
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def add_tag_to_task(request, task_id):
-    task = get_object_or_404(Task, id=task_id, user=request.user)
-    serializer = TaskTagSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-
-    tag_ids = serializer.validated_data["tags"]
-    tags = Tag.objects.filter(id__in=tag_ids)
-    task.tags.set(tags)  # overwrite tags with new set
-    task.save()
-
-    ActivityLog.objects.create(
-        task=task,
-        user=request.user,
-        action="tag_added",
-        details={"tags": [tag.name for tag in tags]},
-    )
-
-    return Response(
-        {
-            "task_id": str(task.id),
-            "tags": [{"id": str(tag.id), "name": tag.name} for tag in tags],
-        }
-    )
-
-
-# ---------- LOGS ----------
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def task_logs(request, task_id):
-    logs = ActivityLog.objects.filter(task_id=task_id, user=request.user).order_by("-timestamp")
-    if not logs.exists():
-        return Response({"error": "No logs found for this task"}, status=404)
-    serializer = ActivityLogSerializer(logs, many=True)
-    return Response(serializer.data)
-
-
-# ---------- REMINDERS ----------
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def get_reminders(request):
-    now = timezone.now()
-    tasks = Task.objects.filter(user=request.user, remind_at__isnull=False, remind_at__gte=now)
-    reminders = [
-        {"task_id": str(task.id), "title": task.title, "remind_at": task.remind_at}
-        for task in tasks
-    ]
-    return Response(reminders)
+    # -------- REMINDERS (no extra structured filters here) --------
+    @action(detail=False, methods=["get"], url_path="reminders")
+    def reminders(self, request):
+        now = timezone.now()
+        tasks = Task.objects.filter(user=request.user, remind_at__isnull=False, remind_at__gte=now)
+        reminders = [{"task_id": str(task.id), "title": task.title, "remind_at": task.remind_at} for task in tasks]
+        return Response(reminders)

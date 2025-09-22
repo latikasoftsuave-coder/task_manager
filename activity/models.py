@@ -16,4 +16,6 @@ class ActivityLog(models.Model):
         ordering = ['-timestamp']
 
     def __str__(self):
-        return f"{self.user.username} {self.action} {self.task.title} at {self.timestamp}"
+        task_title = self.task.title if self.task else "No Task"
+        username = self.user.email if self.user else "No User"
+        return f"{username} {self.action} {task_title} at {self.timestamp}"

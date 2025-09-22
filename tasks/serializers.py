@@ -47,9 +47,18 @@ class TaskSerializer(serializers.ModelSerializer):
 
 
 class ActivityLogSerializer(serializers.ModelSerializer):
+    task_title = serializers.SerializerMethodField()
+    user_email = serializers.SerializerMethodField()
+
     class Meta:
         model = ActivityLog
-        fields = '__all__'
+        fields = ["id", "user_email", "task_title", "action", "timestamp"]
+
+    def get_task_title(self, obj):
+        return obj.task.title if obj.task else None
+
+    def get_user_email(self, obj):
+        return obj.user.email if obj.user else None
 
 class TaskCategorySerializer(serializers.Serializer):
     category_id = serializers.UUIDField()
