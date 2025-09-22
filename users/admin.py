@@ -1,10 +1,10 @@
+# users/admin.py
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin
 from .models import User
 
 @admin.register(User)
-class CustomUserAdmin(UserAdmin):
-    model = User
-    list_display = ("id", "username", "email", "is_staff", "is_active")
-    search_fields = ("email", "username")
-    ordering = ("email",)
+class CustomUserAdmin(admin.ModelAdmin):
+    list_display = ('id', 'email', 'first_name', 'last_name', 'is_staff', 'is_active')
+    search_fields = ('email', 'first_name', 'last_name')
+    list_filter = ('is_staff', 'is_active')
+    ordering = ('id',)
