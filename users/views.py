@@ -1,3 +1,4 @@
+# users/views.py
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -8,7 +9,6 @@ from drf_yasg.utils import swagger_auto_schema
 from .serializers import UserRegistrationSerializer, CustomTokenObtainPairSerializer, UserSerializer
 
 
-# -------- REGISTER --------
 class RegisterView(TokenObtainPairView):
     permission_classes = [AllowAny]
     serializer_class = UserRegistrationSerializer
@@ -21,13 +21,12 @@ class RegisterView(TokenObtainPairView):
         return Response(
             {
                 "user": UserSerializer(user).data,
-                "message": "User registered successfully. Use /api/auth/login/ to get JWT.",
+                "message": "User registered successfully. Use /login/ to get JWT.",
             },
             status=status.HTTP_201_CREATED,
         )
 
 
-# -------- LOGIN --------
 class CustomLoginView(TokenObtainPairView):
     permission_classes = [AllowAny]
     serializer_class = CustomTokenObtainPairSerializer
@@ -37,7 +36,6 @@ class CustomLoginView(TokenObtainPairView):
         return super().post(request, *args, **kwargs)
 
 
-# -------- PROFILE --------
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def profile_view(request):

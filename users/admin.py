@@ -1,39 +1,41 @@
+# users/admin.py
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.forms import ModelForm
 from .models import User
 
-# User creation form
+
 class UserCreationForm(ModelForm):
     class Meta:
         model = User
-        fields = ("email", "password")
+        fields = ("email", "username", "password")
 
-# User change form
+
 class UserChangeForm(ModelForm):
     class Meta:
         model = User
-        fields = ("email", "password", "is_active", "is_staff", "is_superuser")
+        fields = ("email", "username", "password", "is_active", "is_staff", "is_superuser")
 
-# Custom UserAdmin
+
 class UserAdmin(BaseUserAdmin):
     form = UserChangeForm
     add_form = UserCreationForm
 
-    list_display = ("email", "is_staff", "is_superuser", "is_active")
-    list_filter = ("is_staff", "is_superuser", "is_active")  # remove groups & permissions
+    list_display = ("email", "username", "is_staff", "is_superuser", "is_active")
+    list_filter = ("is_staff", "is_superuser", "is_active")
 
     fieldsets = (
-        (None, {"fields": ("email", "password")}),
+        (None, {"fields": ("email", "username", "password")}),
         ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser")}),
     )
     add_fieldsets = (
-        (None, {"fields": ("email", "password")}),
+        (None, {"fields": ("email", "username", "password")}),
         ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser")}),
     )
 
-    search_fields = ("email",)
+    search_fields = ("email", "username")
     ordering = ("email",)
-    filter_horizontal = ()  # must be empty, remove groups/user_permissions
+    filter_horizontal = ()
+
 
 admin.site.register(User, UserAdmin)
