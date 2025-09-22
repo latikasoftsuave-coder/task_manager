@@ -16,10 +16,11 @@ class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
         exclude = ('category', 'tags', 'user', 'created_at', 'updated_at')
-        read_only_fields = ('id', 'user', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'user', 'created_at', 'updated_at','reminder_sent')
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
+        validated_data.setdefault('reminder_sent', False)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
